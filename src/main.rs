@@ -5,29 +5,28 @@ use embedded_graphics as eg;
 use panic_halt as _;
 use wio_terminal as wio;
 
-use eg::style::{PrimitiveStyleBuilder, TextStyle};
+use eg::style::TextStyle;
 use eg::fonts::{Font8x16, Text};
 use eg::pixelcolor::Rgb565;
 use eg::prelude::*;
-//use eg::primitives::rectangle::Rectangle;
 
 use wio::{entry, wifi_singleton, Pins, Sets};
-//use wio::{Scroller, LCD};
 use wio::pac::{Peripherals, CorePeripherals};
 use wio::hal::clock::GenericClockController;
 use wio::hal::delay::Delay;
+use wio::hal::sercom::{I2CMaster3, Sercom3Pad0, Sercom3Pad1};
+use wio::hal::gpio::{Pa16, Pa17, PfD};
 use wio::prelude::*;
 
 use wio::wifi_prelude::*;
 use wio::wifi_rpcs as rpc;
 use wio::wifi_types::Security;
 
-use wio::hal::sercom::{I2CMaster3, Sercom3Pad0, Sercom3Pad1};
-use wio::hal::gpio::{Pa16, Pa17, PfD};
-
 use core::fmt::Write;
 use cortex_m::interrupt::free as disable_interrupts;
 use heapless::{consts::U256, String};
+
+mod secrets;
 
 #[entry]
 fn main() -> ! {
@@ -59,8 +58,6 @@ fn main() -> ! {
         .unwrap();
     clear(&mut display);
 
-    let mut user_led = sets.user_led.into_open_drain_output(&mut sets.port);
-    user_led.set_low().unwrap();
     // Initialize the wifi peripheral.
     let args = (
         sets.wifi,
@@ -71,6 +68,7 @@ fn main() -> ! {
         &mut delay,
     );
 
+    // Disable interrupt
     let nvic = &mut core.NVIC;
     disable_interrupts(|cs| unsafe {
         wifi_init(cs, args.0, args.1, args.2, args.3, args.4, args.5).unwrap();
@@ -79,61 +77,49 @@ fn main() -> ! {
         });
     });
 
-    let mut textbuffer = String::<U256>::new();
-    writeln!(textbuffer, "befor blocking rpc\n").unwrap();
-    write(
-        &mut display,
-        textbuffer.as_str(),
-        Point::new(10 as i32, 10),
-    );
-    textbuffer.truncate(0);
-
+    // show version
     let version = unsafe {
         WIFI.as_mut()
             .map(|wifi| wifi.blocking_rpc(rpc::GetVersion {}).unwrap())
             .unwrap()
     };
-
     let mut textbuffer = String::<U256>::new();
     writeln!(textbuffer, "firmware: {}", version).unwrap();
-    write(
-        &mut display,
-        textbuffer.as_str(),
-Point::new(10 as i32, 30),
-    );
+    write(&mut display, textbuffer.as_str(), Point::new(10, 10));
     textbuffer.truncate(0);
 
+    // show mac address
     let mac = unsafe {
         WIFI.as_mut()
             .map(|wifi| wifi.blocking_rpc(rpc::GetMacAddress {}).unwrap())
             .unwrap()
     };
     writeln!(textbuffer, "mac: {}", mac).unwrap();
-    write(&mut display, textbuffer.as_str(), Point::new(10, 50));
+    write(&mut display, textbuffer.as_str(), Point::new(10, 30));
     textbuffer.truncate(0);
 
+    // show IP
     let ip_info = unsafe {
         WIFI.as_mut()
             .map(|wifi| {
                 wifi.connect_to_ap(
                     &mut delay,
-                    "ssid",
-                    "pass",
+                    secrets::wifi::SSID,
+                    secrets::wifi::PASS,
                     Security::WPA2_SECURITY | Security::AES_ENABLED,
                 )
                 .unwrap()
             })
             .unwrap()
     };
-    user_led.set_high().ok();
     writeln!(textbuffer, "ip = {}", ip_info.ip).unwrap();
-    write(&mut display, textbuffer.as_str(), Point::new(19, 70));
+    write(&mut display, textbuffer.as_str(), Point::new(10, 50));
     textbuffer.truncate(0);
     writeln!(textbuffer, "netmask = {}", ip_info.netmask).unwrap();
-    write(&mut display, textbuffer.as_str(), Point::new(10, 90));
+    write(&mut display, textbuffer.as_str(), Point::new(10, 70));
     textbuffer.truncate(0);
     writeln!(textbuffer, "gateway = {}", ip_info.gateway).unwrap();
-    write(&mut display, textbuffer.as_str(), Point::new(10, 110));
+    write(&mut display, textbuffer.as_str(), Point::new(10, 90));
     textbuffer.truncate(0);
 
     //Initialize i2c
@@ -149,18 +135,17 @@ Point::new(10 as i32, 30),
     let mut sht3 = SHT3X::new(user_i2c, device_address);
 
     loop {
-       // measure data
-        sht3.measure();
-
-        let t = sht3.get_temp();
-        let h = sht3.get_humid();
-       
-        writeln!(textbuffer, "temp:{}, humid: {}", t, h).unwrap();
-        write(&mut display, textbuffer.as_str(), Point::new(10, 130));
-        textbuffer.truncate(0);
-        
         //wait 1[s]
         delay.delay_ms(1000u32);
+
+        // measure data
+        sht3.measure();
+
+        // print data
+        clear(&mut display);
+        writeln!(textbuffer, "temp:{0:.1}C, humid: {1:.1}%", sht3.get_temp(), sht3.get_humid()).unwrap();
+        write(&mut display, textbuffer.as_str(), Point::new(10, 10));
+        textbuffer.truncate(0);
     }
 }
 
@@ -198,10 +183,10 @@ impl SHT3X{
     }
     pub fn measure(&mut self){
         let wdata: [u8; 2] = [0x2C, 0x06];
-        //let _ret = self.i2c.write(self.address, &wdata);
+        let _ret = self.i2c.write(self.address, &wdata);
 
         let mut rdata: [u8; 6] = [0,0,0,0,0,0];
-        //let _ret = self.i2c.read(self.address, &mut rdata);
+        let _ret = self.i2c.read(self.address, &mut rdata);
 
         self.c_temp = (((rdata[0] as f32 * 256.0) + rdata[1] as f32) * 175.0) / 65535.0 - 45.0;
         self.humid  = (((rdata[3] as f32 * 256.0) + rdata[4] as f32) * 100.0) / 65535.0;
