@@ -28,6 +28,8 @@ mod secrets;
 mod env_ii_sensor;
 use env_ii_sensor::SHT3X;
 
+use onewire::OneWire;
+
 #[entry]
 fn main() -> ! {
     let mut core = CorePeripherals::take().unwrap();
@@ -133,6 +135,10 @@ fn main() -> ! {
     //Initialize SHT sensor
     let device_address = 0x44u8;
     let mut sht3 = SHT3X::new(user_i2c, device_address);
+
+    //Initialize one wire
+    let  mut one = sets.header_pins.a0_d0.into_readable_open_drain_output(&mut sets.port);
+    let mut wire = OneWire::new(&mut one, false);
 
     loop {
         //wait 1[s]
