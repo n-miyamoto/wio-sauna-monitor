@@ -14,6 +14,7 @@ use wio::{entry, wifi_singleton, Pins, Sets};
 use wio::pac::{Peripherals, CorePeripherals};
 use wio::hal::clock::GenericClockController;
 use wio::hal::delay::Delay;
+use wio::hal::hal::blocking::delay::DelayUs;
 use wio::prelude::*;
 
 use wio::wifi_prelude::*;
@@ -21,6 +22,7 @@ use wio::wifi_rpcs as rpc;
 use wio::wifi_types::Security;
 
 use core::fmt::Write;
+use core::fmt::Debug;
 use cortex_m::interrupt::free as disable_interrupts;
 use heapless::{consts::U256, String};
 
@@ -30,11 +32,10 @@ use env_ii_sensor::SHT3X;
 
 use onewire::OneWire;
 use onewire::DeviceSearch;
-use onewire::Device;
 use onewire::ds18b20;
 use onewire::DS18B20;
 use onewire::Error;
-
+use onewire::Device;
 use core::convert::Infallible;
 
 #[entry]
@@ -68,7 +69,7 @@ fn main() -> ! {
     clear(&mut display);
 
     let mut textbuffer = String::<U256>::new();
-/* 
+
     // Initialize the wifi peripheral.
     let args = (
         sets.wifi,
@@ -131,7 +132,7 @@ fn main() -> ! {
     writeln!(textbuffer, "gateway = {}", ip_info.gateway).unwrap();
     write(&mut display, textbuffer.as_str(), Point::new(10, 90));
     textbuffer.truncate(0);
-*/
+
     //Initialize i2c
     let user_i2c = sets.i2c.init(
         &mut clocks,
@@ -144,41 +145,83 @@ fn main() -> ! {
     let device_address = 0x44u8;
     let mut sht3 = SHT3X::new(user_i2c, device_address);
     
-    //debug
-    writeln!(textbuffer, "Before Initialize one wire\n").unwrap();
-    write(&mut display, textbuffer.as_str(), Point::new(10, 10));
-    textbuffer.truncate(0);
-
     //Initialize one wire
     let mut one = sets.header_pins.a0_d0.into_readable_open_drain_output(&mut sets.port);
     let mut wire = OneWire::new(&mut one, false);
     let mut search = DeviceSearch::new();
 
-    //debug
-    writeln!(textbuffer, "After Initialize one wire\n").unwrap();
-    write(&mut display, textbuffer.as_str(), Point::new(10, 30));
-    textbuffer.truncate(0);
+    //  find & init ds18b sensor
+    let device = wire.search_next(&mut search, &mut delay).unwrap().unwrap();
+    let ds_wrapper = Ds18b20Wrapper::new(device);
 
-
+    //main loop
     loop {
         //wait 1[s]
         delay.delay_ms(1000u32);
 
         // measure data from sht3
         sht3.measure();
+        let sauna_temp  = sht3.get_temp();
+        let sauna_humid = sht3.get_humid();
 
-        //measure data from ds18b
-        let resolution = ds18b20.measure_temperature(&mut wire, &mut delay).unwrap();
-        delay.delay_ms(resolution.time_ms());
-        let w_temp_raw = ds18b20.read_temperature(&mut wire, &mut delay).unwrap();
-        let w_temp_c = w_temp_raw as f32 * 0.0625; // 0.0625= 1/8*0.5
+        // measure data from ds18b
+        let water_temp = ds_wrapper.measurement(&mut wire, &mut delay);
 
-        // print data
+        // show sensor data
         clear(&mut display);
-        writeln!(textbuffer, "temp:{0:.1} C, humid: {1:.1} %, water: {2:.1} C", 
-            sht3.get_temp(), sht3.get_humid(), w_temp_c).unwrap();
-        write(&mut display, textbuffer.as_str(), Point::new(10, 10));
+        writeln!(textbuffer, "wio sanua monitor!!!\n temp: {0:.1} C\n humid: {1:.1} %\n water: {2:.1} C", 
+            sauna_temp, sauna_humid, water_temp).unwrap();
+        write(&mut display, textbuffer.as_str(), Point::new(30, 30));
         textbuffer.truncate(0);
+
+        // show IP
+        writeln!(textbuffer, "ip = {}", ip_info.ip).unwrap();
+        write(&mut display, textbuffer.as_str(), Point::new(30, 100));
+        textbuffer.truncate(0);
+    }
+}
+
+struct Ds18b20Wrapper{
+    ds18b20 : DS18B20,
+}
+
+impl Ds18b20Wrapper{
+    pub fn new(dev: Device) -> Self {
+        if dev.address[0] !=ds18b20::FAMILY_CODE {
+            //error return;
+        }
+        
+        let ret : Result<DS18B20, Error<Infallible>> = DS18B20::new(dev);
+        let ds18= ret.unwrap();
+
+        Self {ds18b20 : ds18}
+    }
+
+    fn raw_to_cel(& self, raw : u16) -> f32{
+        let mut ti:i32 = raw as i32;
+        if ti > 0x7FFFi32 {                
+            ti = ti - 0xFFFFi32;
+        }
+        let ret :f32 = ti as f32 * 0.0625;
+        ret        
+    } 
+
+    pub fn measurement<E: Debug>(& self, wire :&mut OneWire<E>, delay :&mut impl DelayUs<u16>) -> f32 {
+        let n_trial :u8 = 20;
+        let mut wt :f32 = 100.0;
+        for _ in 0..n_trial{
+            let resolution = self.ds18b20.measure_temperature(wire, delay).unwrap();
+            delay.delay_us(resolution.time_ms()*1000);
+            let ret = self.ds18b20.read_temperature(wire, delay);
+            match ret {
+                Ok(_) => {
+                    wt = self.raw_to_cel(ret.unwrap());
+                    break
+                },
+                Err(_) =>{ /*crc mismatch. try again */ } 
+            }
+        }
+        wt
     }
 }
 
