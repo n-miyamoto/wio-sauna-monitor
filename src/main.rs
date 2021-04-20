@@ -29,6 +29,13 @@ mod env_ii_sensor;
 use env_ii_sensor::SHT3X;
 
 use onewire::OneWire;
+use onewire::DeviceSearch;
+use onewire::Device;
+use onewire::ds18b20;
+use onewire::DS18B20;
+use onewire::Error;
+
+use core::convert::Infallible;
 
 #[entry]
 fn main() -> ! {
@@ -60,6 +67,8 @@ fn main() -> ! {
         .unwrap();
     clear(&mut display);
 
+    let mut textbuffer = String::<U256>::new();
+/* 
     // Initialize the wifi peripheral.
     let args = (
         sets.wifi,
@@ -85,7 +94,6 @@ fn main() -> ! {
             .map(|wifi| wifi.blocking_rpc(rpc::GetVersion {}).unwrap())
             .unwrap()
     };
-    let mut textbuffer = String::<U256>::new();
     writeln!(textbuffer, "firmware: {}", version).unwrap();
     write(&mut display, textbuffer.as_str(), Point::new(10, 10));
     textbuffer.truncate(0);
@@ -123,7 +131,7 @@ fn main() -> ! {
     writeln!(textbuffer, "gateway = {}", ip_info.gateway).unwrap();
     write(&mut display, textbuffer.as_str(), Point::new(10, 90));
     textbuffer.truncate(0);
-
+*/
     //Initialize i2c
     let user_i2c = sets.i2c.init(
         &mut clocks,
@@ -135,21 +143,40 @@ fn main() -> ! {
     //Initialize SHT sensor
     let device_address = 0x44u8;
     let mut sht3 = SHT3X::new(user_i2c, device_address);
+    
+    //debug
+    writeln!(textbuffer, "Before Initialize one wire\n").unwrap();
+    write(&mut display, textbuffer.as_str(), Point::new(10, 10));
+    textbuffer.truncate(0);
 
     //Initialize one wire
-    let  mut one = sets.header_pins.a0_d0.into_readable_open_drain_output(&mut sets.port);
+    let mut one = sets.header_pins.a0_d0.into_readable_open_drain_output(&mut sets.port);
     let mut wire = OneWire::new(&mut one, false);
+    let mut search = DeviceSearch::new();
+
+    //debug
+    writeln!(textbuffer, "After Initialize one wire\n").unwrap();
+    write(&mut display, textbuffer.as_str(), Point::new(10, 30));
+    textbuffer.truncate(0);
+
 
     loop {
         //wait 1[s]
         delay.delay_ms(1000u32);
 
-        // measure data
+        // measure data from sht3
         sht3.measure();
+
+        //measure data from ds18b
+        let resolution = ds18b20.measure_temperature(&mut wire, &mut delay).unwrap();
+        delay.delay_ms(resolution.time_ms());
+        let w_temp_raw = ds18b20.read_temperature(&mut wire, &mut delay).unwrap();
+        let w_temp_c = w_temp_raw as f32 * 0.0625; // 0.0625= 1/8*0.5
 
         // print data
         clear(&mut display);
-        writeln!(textbuffer, "temp:{0:.1}C, humid: {1:.1}%", sht3.get_temp(), sht3.get_humid()).unwrap();
+        writeln!(textbuffer, "temp:{0:.1} C, humid: {1:.1} %, water: {2:.1} C", 
+            sht3.get_temp(), sht3.get_humid(), w_temp_c).unwrap();
         write(&mut display, textbuffer.as_str(), Point::new(10, 10));
         textbuffer.truncate(0);
     }

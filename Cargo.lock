@@ -403,6 +403,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "onewire"
+version = "0.3.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73be67dc9e140c0963625510b4a09c07edf2c07c9dab53134d863e4d302c9ea1"
+dependencies = [
+ "byteorder",
+ "embedded-hal",
+]
+
+[[package]]
 name = "panic-halt"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -582,6 +592,7 @@ dependencies = [
  "cortex-m-rt",
  "embedded-graphics",
  "heapless",
+ "onewire",
  "panic-halt",
  "wio_terminal",
 ]
