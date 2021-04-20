@@ -14,7 +14,6 @@ use wio::{entry, wifi_singleton, Pins, Sets};
 use wio::pac::{Peripherals, CorePeripherals};
 use wio::hal::clock::GenericClockController;
 use wio::hal::delay::Delay;
-use wio::hal::hal::blocking::delay::DelayUs;
 use wio::prelude::*;
 
 use wio::wifi_prelude::*;
@@ -22,21 +21,17 @@ use wio::wifi_rpcs as rpc;
 use wio::wifi_types::Security;
 
 use core::fmt::Write;
-use core::fmt::Debug;
 use cortex_m::interrupt::free as disable_interrupts;
 use heapless::{consts::U256, String};
 
 mod secrets;
 mod env_ii_sensor;
 use env_ii_sensor::SHT3X;
+mod ds18b20_wrapper;
+use ds18b20_wrapper::Ds18b20Wrapper;
 
 use onewire::OneWire;
 use onewire::DeviceSearch;
-use onewire::ds18b20;
-use onewire::DS18B20;
-use onewire::Error;
-use onewire::Device;
-use core::convert::Infallible;
 
 #[entry]
 fn main() -> ! {
@@ -53,8 +48,7 @@ fn main() -> ! {
     let mut delay = Delay::new(core.SYST, &mut clocks);
     let mut sets: Sets = Pins::new(peripherals.PORT).split();
 
-    // Initialize the ILI9341-based LCD display. Create a black backdrop the size of
-    // the screen.
+    // Initialize the ILI9341-based LCD display.
     let (mut display, _backlight) = sets
         .display
         .init(
@@ -68,8 +62,6 @@ fn main() -> ! {
         .unwrap();
     clear(&mut display);
 
-    let mut textbuffer = String::<U256>::new();
-
     // Initialize the wifi peripheral.
     let args = (
         sets.wifi,
@@ -79,7 +71,7 @@ fn main() -> ! {
         &mut sets.port,
         &mut delay,
     );
-
+    
     // Disable interrupt
     let nvic = &mut core.NVIC;
     disable_interrupts(|cs| unsafe {
@@ -88,16 +80,16 @@ fn main() -> ! {
             wifi.enable(cs, nvic);
         });
     });
-
+    
     // show version
     let version = unsafe {
         WIFI.as_mut()
-            .map(|wifi| wifi.blocking_rpc(rpc::GetVersion {}).unwrap())
-            .unwrap()
+        .map(|wifi| wifi.blocking_rpc(rpc::GetVersion {}).unwrap())
+        .unwrap()
     };
+    let mut textbuffer = String::<U256>::new();
     writeln!(textbuffer, "firmware: {}", version).unwrap();
-    write(&mut display, textbuffer.as_str(), Point::new(10, 10));
-    textbuffer.truncate(0);
+    print_text(&mut display, &mut textbuffer, Point::new(10,10));
 
     // show mac address
     let mac = unsafe {
@@ -106,10 +98,9 @@ fn main() -> ! {
             .unwrap()
     };
     writeln!(textbuffer, "mac: {}", mac).unwrap();
-    write(&mut display, textbuffer.as_str(), Point::new(10, 30));
-    textbuffer.truncate(0);
+    print_text(&mut display, &mut textbuffer, Point::new(10,10));
 
-    // show IP
+    // show IP address
     let ip_info = unsafe {
         WIFI.as_mut()
             .map(|wifi| {
@@ -123,15 +114,12 @@ fn main() -> ! {
             })
             .unwrap()
     };
-    writeln!(textbuffer, "ip = {}", ip_info.ip).unwrap();
-    write(&mut display, textbuffer.as_str(), Point::new(10, 50));
-    textbuffer.truncate(0);
-    writeln!(textbuffer, "netmask = {}", ip_info.netmask).unwrap();
-    write(&mut display, textbuffer.as_str(), Point::new(10, 70));
-    textbuffer.truncate(0);
-    writeln!(textbuffer, "gateway = {}", ip_info.gateway).unwrap();
-    write(&mut display, textbuffer.as_str(), Point::new(10, 90));
-    textbuffer.truncate(0);
+    writeln!(textbuffer, "ip = {}\nnetmask = {}\ngateway = {}",
+        ip_info.ip,
+        ip_info.netmask,
+        ip_info.gateway,
+    ).unwrap();
+    print_text(&mut display, &mut textbuffer, Point::new(10,50));
 
     //Initialize i2c
     let user_i2c = sets.i2c.init(
@@ -171,61 +159,21 @@ fn main() -> ! {
         clear(&mut display);
         writeln!(textbuffer, "wio sanua monitor!!!\n temp: {0:.1} C\n humid: {1:.1} %\n water: {2:.1} C", 
             sauna_temp, sauna_humid, water_temp).unwrap();
-        write(&mut display, textbuffer.as_str(), Point::new(30, 30));
-        textbuffer.truncate(0);
+        print_text(&mut display, &mut textbuffer, Point::new(30,30));
 
-        // show IP
+        // show IP address
         writeln!(textbuffer, "ip = {}", ip_info.ip).unwrap();
-        write(&mut display, textbuffer.as_str(), Point::new(30, 100));
-        textbuffer.truncate(0);
-    }
-}
-
-struct Ds18b20Wrapper{
-    ds18b20 : DS18B20,
-}
-
-impl Ds18b20Wrapper{
-    pub fn new(dev: Device) -> Self {
-        if dev.address[0] !=ds18b20::FAMILY_CODE {
-            //error return;
-        }
-        
-        let ret : Result<DS18B20, Error<Infallible>> = DS18B20::new(dev);
-        let ds18= ret.unwrap();
-
-        Self {ds18b20 : ds18}
-    }
-
-    fn raw_to_cel(& self, raw : u16) -> f32{
-        let mut ti:i32 = raw as i32;
-        if ti > 0x7FFFi32 {                
-            ti = ti - 0xFFFFi32;
-        }
-        let ret :f32 = ti as f32 * 0.0625;
-        ret        
-    } 
-
-    pub fn measurement<E: Debug>(& self, wire :&mut OneWire<E>, delay :&mut impl DelayUs<u16>) -> f32 {
-        let n_trial :u8 = 20;
-        let mut wt :f32 = 100.0;
-        for _ in 0..n_trial{
-            let resolution = self.ds18b20.measure_temperature(wire, delay).unwrap();
-            delay.delay_us(resolution.time_ms()*1000);
-            let ret = self.ds18b20.read_temperature(wire, delay);
-            match ret {
-                Ok(_) => {
-                    wt = self.raw_to_cel(ret.unwrap());
-                    break
-                },
-                Err(_) =>{ /*crc mismatch. try again */ } 
-            }
-        }
-        wt
+        print_text(&mut display, &mut textbuffer, Point::new(30,50));
     }
 }
 
 wifi_singleton!(WIFI);
+
+// Display utils
+fn print_text(display: &mut wio::LCD, textbuffer:&mut String<U256>, point: Point){
+    write(display, textbuffer.as_str(), point);
+    textbuffer.truncate(0);
+}
 
 fn clear(display: &mut wio::LCD) {
     display.clear(Rgb565::BLACK).ok().unwrap();
