@@ -98,7 +98,7 @@ fn main() -> ! {
             .unwrap()
     };
     writeln!(textbuffer, "mac: {}", mac).unwrap();
-    print_text(&mut display, &mut textbuffer, Point::new(10,10));
+    print_text(&mut display, &mut textbuffer, Point::new(10,30));
 
     // show IP address
     let ip_info = unsafe {
