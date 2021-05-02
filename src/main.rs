@@ -319,7 +319,21 @@ fn http_post(ip: u32, port: u16, msg: &str, textbuffer: &mut String::<U256>, dis
     write(display, textbuffer.as_str(), Point::new(3, 170));
     textbuffer.truncate(0);
 
-    //TODO close connection
+    //close connection
+    unsafe {
+        WIFI.as_mut()
+        .map(|wifi| {
+            let r = wifi.close();
+            match r{
+                Ok(txt) => {
+                    writeln!(textbuffer, "Connection Closed").unwrap();
+                    write(display, textbuffer.as_str(), Point::new(3, 220));
+                    textbuffer.truncate(0)
+                },
+                Err(_) => {},
+            };
+        }).unwrap()
+    };
 
     //TODO parse response code
 }

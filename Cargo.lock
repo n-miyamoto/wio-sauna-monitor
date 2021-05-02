@@ -35,7 +35,7 @@ dependencies = [
 [[package]]
 name = "atsamd-hal"
 version = "0.12.0"
-source = "git+https://github.com/n-miyamoto/atsamd?branch=dev#27a36cae5d6325cfaf8509441c259386652469ee"
+source = "git+https://github.com/n-miyamoto/atsamd?branch=dev#538d81ab11d14fb440a41065c5b893e49aa34cc3"
 dependencies = [
  "atsamd51p",
  "bitfield",
@@ -58,7 +58,7 @@ dependencies = [
 [[package]]
 name = "atsamd51p"
 version = "0.9.0"
-source = "git+https://github.com/n-miyamoto/atsamd?branch=dev#27a36cae5d6325cfaf8509441c259386652469ee"
+source = "git+https://github.com/n-miyamoto/atsamd?branch=dev#538d81ab11d14fb440a41065c5b893e49aa34cc3"
 dependencies = [
  "bare-metal",
  "cortex-m 0.6.7",
@@ -599,7 +599,7 @@ dependencies = [
 [[package]]
 name = "wio_terminal"
 version = "0.3.0"
-source = "git+https://github.com/n-miyamoto/atsamd?branch=dev#27a36cae5d6325cfaf8509441c259386652469ee"
+source = "git+https://github.com/n-miyamoto/atsamd?branch=dev#538d81ab11d14fb440a41065c5b893e49aa34cc3"
 dependencies = [
  "atsamd-hal",
  "bbqueue",
