@@ -35,7 +35,7 @@ dependencies = [
 [[package]]
 name = "atsamd-hal"
 version = "0.12.0"
-source = "git+https://github.com/n-miyamoto/atsamd?branch=dev#183550e1eb8402eb8d205de2b3f1e69c87192518"
+source = "git+https://github.com/n-miyamoto/atsamd?branch=dev#27a36cae5d6325cfaf8509441c259386652469ee"
 dependencies = [
  "atsamd51p",
  "bitfield",
@@ -58,7 +58,7 @@ dependencies = [
 [[package]]
 name = "atsamd51p"
 version = "0.9.0"
-source = "git+https://github.com/n-miyamoto/atsamd?branch=dev#183550e1eb8402eb8d205de2b3f1e69c87192518"
+source = "git+https://github.com/n-miyamoto/atsamd?branch=dev#27a36cae5d6325cfaf8509441c259386652469ee"
 dependencies = [
  "bare-metal",
  "cortex-m 0.6.7",
@@ -472,7 +472,7 @@ dependencies = [
 [[package]]
 name = "seeed-erpc"
 version = "0.1.1"
-source = "git+https://github.com/n-miyamoto/seeed-erpc-rs?branch=dev#a2918c72f5201de522d1b5607aaab810b12ef790"
+source = "git+https://github.com/n-miyamoto/seeed-erpc-rs?branch=dev#b604f8870776772039b1def177cc9632a9db8333"
 dependencies = [
  "bbqueue",
  "bitfield",
@@ -599,7 +599,7 @@ dependencies = [
 [[package]]
 name = "wio_terminal"
 version = "0.3.0"
-source = "git+https://github.com/n-miyamoto/atsamd?branch=dev#183550e1eb8402eb8d205de2b3f1e69c87192518"
+source = "git+https://github.com/n-miyamoto/atsamd?branch=dev#27a36cae5d6325cfaf8509441c259386652469ee"
 dependencies = [
  "atsamd-hal",
  "bbqueue",
