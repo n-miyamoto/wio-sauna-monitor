@@ -132,10 +132,16 @@ fn main() -> ! {
     writeln!(textbuffer, "Ok, msg length: {} ", msg.len()).unwrap();
     write(&mut display, textbuffer.as_str(), Point::new(10, 30));
     textbuffer.truncate(0);
+
     //post request
     let ip = secrets::ambient::IP;
     let port = secrets::ambient::PORT;
-    http_post(ip, port, msg.as_str() , &mut textbuffer, &mut display);
+    let res = http_post(ip, port, msg.as_str() , &mut textbuffer, &mut display).unwrap();
+
+    clear(&mut display);
+    writeln!(textbuffer, "http Ok, {} ", res).unwrap();
+    write(&mut display, textbuffer.as_str(), Point::new(10, 50));
+    textbuffer.truncate(0);
 
     //Initialize i2c
     let user_i2c = sets.i2c.init(
@@ -221,29 +227,26 @@ fn create_request_for_ambient(channel_id : u32, write_key : &str, data : [f32;3]
                   bodybuffer,
     ).unwrap();
 }
+#[derive(Debug, Clone, PartialEq)]
+pub enum Err{
+    ConnectFailed,
+    CloseFailed,
+    Unknown,
+}
 
-fn http_post(ip: u32, port: u16, msg: &str, textbuffer: &mut String::<U256>, display: &mut wio::LCD) {
+fn http_post(ip: u32, port: u16, msg: &str, textbuffer: &mut String::<U256>, display: &mut wio::LCD) -> Result<u32,Err>{
 
     let timeout = 4000*1000; //100ms
 
-    unsafe {
-        WIFI.as_mut()
-            .map(|wifi| {
-                let r = wifi.connect(ip, port, timeout);
-                match r{
-                    Ok(_) => {
-                            writeln!(textbuffer, "Connect OK : {}, {}", ip, msg.len()).unwrap();
-                            write(display, textbuffer.as_str(), Point::new(10, 45));
-                            textbuffer.truncate(0);
-                    },
-                    Err(_) => {
-                            writeln!(textbuffer, "Err").unwrap();
-                            write(display, textbuffer.as_str(), Point::new(10, 45));
-                            textbuffer.truncate(0);
-                    },
-                };
-            }).unwrap()
+    let ret = unsafe {
+        WIFI.as_mut().map(|wifi| {
+            wifi.connect(ip, port, timeout)
+        }).unwrap()
     };
+    match ret{
+        Err(_) => return Err(Err::ConnectFailed),
+        _ => (),
+    }
 
     let n = (msg.len()+39)/40;
     for i in 0..n{
@@ -271,13 +274,10 @@ fn http_post(ip: u32, port: u16, msg: &str, textbuffer: &mut String::<U256>, dis
 
     //recv message
     let mut text= String::<U4096>::new();
-    let mut countdown = 20u32;
+    let mut countdown = 100u32;
     let mut body_length = 0;
 
-    let mut progress= String::<U4096>::new();
-
     loop {
-        progress.push('+');
         unsafe {
             WIFI.as_mut()
             .map(|wifi| {
@@ -287,7 +287,6 @@ fn http_post(ip: u32, port: u16, msg: &str, textbuffer: &mut String::<U256>, dis
                         let t= String::from_utf8(txt).unwrap();
                         text.push_str(t.as_str()).ok();
 
-                        writeln!(textbuffer, "Ok {}" , progress.as_str()).unwrap();
                         write(display, textbuffer.as_str(), Point::new(3, 140));
                         textbuffer.truncate(0)
                     },
@@ -314,30 +313,32 @@ fn http_post(ip: u32, port: u16, msg: &str, textbuffer: &mut String::<U256>, dis
 
         if countdown == 0 {break;}
     }
-
-    writeln!(textbuffer, "fin recv {}", text.as_str()).unwrap();
+    
+    writeln!(textbuffer, "fin recv {}",text.as_str()).unwrap();
     write(display, textbuffer.as_str(), Point::new(3, 170));
     textbuffer.truncate(0);
 
     //close connection
-    unsafe {
-        WIFI.as_mut()
-        .map(|wifi| {
-            let r = wifi.close();
-            match r{
-                Ok(txt) => {
-                    writeln!(textbuffer, "Connection Closed").unwrap();
-                    write(display, textbuffer.as_str(), Point::new(3, 220));
-                    textbuffer.truncate(0)
-                },
-                Err(_) => {},
-            };
+    let ret = unsafe {
+        WIFI.as_mut().map(|wifi| {
+            wifi.close()
         }).unwrap()
     };
+    match ret{
+        Err(_) => return Err(Err::CloseFailed),
+        _ => (),
+    }
 
-    //TODO parse response code
+    // parse response code
+    let res = find_response_code(&text).unwrap();
+
+    Ok(res)
 }
 
+fn find_response_code(text : &heapless::String<U4096>) -> Result<u32, ()>{
+    let vec: heapless::Vec<&str,U4096> = text.as_str().split_whitespace().collect();
+    Ok(vec[1].parse().unwrap())
+}
 
 fn find_content_length(text : &heapless::String<U4096>) -> Result<u32, ()>{
     let s: &str = "content-length:"; //need fix
