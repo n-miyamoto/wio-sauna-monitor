@@ -230,14 +230,17 @@ fn create_request_for_ambient(channel_id : u32, write_key : &str, data : [f32;3]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Err{
     ConnectFailed,
+    SendFailed,
+    RecvFailed,
     CloseFailed,
     Unknown,
 }
 
 fn http_post(ip: u32, port: u16, msg: &str, textbuffer: &mut String::<U256>, display: &mut wio::LCD) -> Result<u32,Err>{
 
-    let timeout = 4000*1000; //100ms
+    let timeout = 4000*1000; //4s
 
+    // connect 
     let ret = unsafe {
         WIFI.as_mut().map(|wifi| {
             wifi.connect(ip, port, timeout)
@@ -248,64 +251,49 @@ fn http_post(ip: u32, port: u16, msg: &str, textbuffer: &mut String::<U256>, dis
         _ => (),
     }
 
-    let n = (msg.len()+39)/40;
+    // send message
+    let chunk_size = 40;
+    let n = (msg.len()+chunk_size-1)/chunk_size;
     for i in 0..n{
-        unsafe {
-            WIFI.as_mut()
-            .map(|wifi| {
-                let r = wifi.send(&msg[40*i.. core::cmp::min(40*(i+1), msg.len())]);
-                match r{
-                    Ok(_) => {},
-                    Err(_) => {
-                            writeln!(textbuffer, "Err").unwrap();
-                            write(display, textbuffer.as_str(), Point::new(3, 60));
-                            textbuffer.truncate(0);
-                    },
-                };
-                let ret = r.unwrap();
-                ret
+        let ret = unsafe {
+            WIFI.as_mut().map(|wifi| {
+                wifi.send(&msg[chunk_size*i .. core::cmp::min(chunk_size*(i+1), msg.len())])
             }).unwrap()
         };
+        match ret{
+            Err(_) => return Err(Err::SendFailed),
+            _ => (),
+        }
     }
 
-    writeln!(textbuffer, "{}", msg).unwrap();
-    write(display, textbuffer.as_str(), Point::new(3, 60));
-    textbuffer.truncate(0);
-
-    //recv message
+    // recv message
     let mut text= String::<U4096>::new();
-    let mut countdown = 100u32;
-    let mut body_length = 0;
+    let mut countdown = 100;
+    let mut body_length = -1;
+    let recv_chunk_size = 512;
 
     loop {
-        unsafe {
-            WIFI.as_mut()
-            .map(|wifi| {
-                let r = wifi.recv();
-                match r{
-                    Ok(txt) => {
-                        let t= String::from_utf8(txt).unwrap();
-                        text.push_str(t.as_str()).ok();
-
-                        write(display, textbuffer.as_str(), Point::new(3, 140));
-                        textbuffer.truncate(0)
-                    },
-                    Err(_) => {},
-                };
+        let ret = unsafe {
+            WIFI.as_mut().map(|wifi| {
+                wifi.recv()
             }).unwrap()
         };
+        match ret {
+            Ok(txt) => {
+                let t= String::from_utf8(txt).unwrap();
+                text.push_str(t.as_str()).ok();
+            },
+            Err(_) => {},
+        }
+
         countdown-=1;
 
-        if body_length == 0 {
+        if body_length < 0 {
             let ret = find_content_length(&text);
             match ret{
                 Ok(a) => {                    
-                    body_length = a;
-                    countdown = (a+511)/512;
-
-                    writeln!(textbuffer, "find content length {}" , a).unwrap();
-                    write(display, textbuffer.as_str(), Point::new(3, 155));
-                    textbuffer.truncate(0)
+                    body_length = a as i32;
+                    countdown = (a+recv_chunk_size)/recv_chunk_size;
                 },
                 Err(_) => {}
             }
@@ -313,10 +301,10 @@ fn http_post(ip: u32, port: u16, msg: &str, textbuffer: &mut String::<U256>, dis
 
         if countdown == 0 {break;}
     }
-    
-    writeln!(textbuffer, "fin recv {}",text.as_str()).unwrap();
-    write(display, textbuffer.as_str(), Point::new(3, 170));
-    textbuffer.truncate(0);
+
+    if body_length < 0 {
+        return Err(Err::RecvFailed);
+    }
 
     //close connection
     let ret = unsafe {
