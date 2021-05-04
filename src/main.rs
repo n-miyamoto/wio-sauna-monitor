@@ -101,7 +101,7 @@ fn main() -> ! {
     print_text(&mut display, &mut textbuffer, Point::new(180,0));
 
     // show IP address
-    let ip_info = unsafe {
+    let ret = unsafe {
         WIFI.as_mut()
             .map(|wifi| {
                 wifi.connect_to_ap(
@@ -110,10 +110,20 @@ fn main() -> ! {
                     secrets::wifi::PASS,
                     Security::WPA2_SECURITY | Security::AES_ENABLED,
                 )
-                .unwrap()
-            })
-            .unwrap()
+            }).unwrap()
     };
+    match ret{ 
+        Ok(_) => {
+
+        },
+        Err(_) => {
+            writeln!(textbuffer, "Cannot connect to AP!!!").unwrap();
+            print_text(&mut display, &mut textbuffer, Point::new(10,150));
+            loop{};
+        },
+    }
+    let ip_info = ret.unwrap();
+ 
     writeln!(textbuffer, "ip = {}, netmask = {}, gateway = {}",
         ip_info.ip,
         ip_info.netmask,
@@ -121,55 +131,9 @@ fn main() -> ! {
     ).unwrap();
     print_text(&mut display, &mut textbuffer, Point::new(10,15));
 
-
-    //post request
-    let ip = secrets::ambient::IP;
-    let port = secrets::ambient::PORT;
-
-    let mut i = 0;
-    loop{
-        i+=1;
-        delay.delay_ms(5000u32);
-
-        let mut msg = String::<U256>::new();
-        let d1 = 16.0;
-        let d2 = 81.2;
-        let d3 = 53.4;
-        create_request_for_ambient(secrets::ambient::CHANNEL_ID, secrets::ambient::WRITE_KEY, [d1, d2, d3], &mut msg);
-        let res = http_post(ip, port, msg.as_str() , &mut textbuffer, &mut display, &mut delay);
-        match res{
-            Ok(num) => {
-                writeln!(textbuffer, "http Ok, {} ", num).unwrap();
-                write(&mut display, textbuffer.as_str(), Point::new(10, 50 + 15*i));
-                textbuffer.truncate(0);
-            },
-            Err(e) => {
-                match e {                        
-                    Err::ConnectFailed => {
-                        writeln!(textbuffer, "http NG Connection failed").unwrap();
-                        write(&mut display, textbuffer.as_str(), Point::new(10, 50 + 15*i));
-                        textbuffer.truncate(0);
-                    },
-                    Err::RecvFailed =>{
-                        writeln!(textbuffer, "http NG Recv failed").unwrap();
-                        write(&mut display, textbuffer.as_str(), Point::new(10, 50 + 15*i));
-                        textbuffer.truncate(0);
-                    }
-                    _ => {
-                        writeln!(textbuffer, "http NG failed").unwrap();
-                        write(&mut display, textbuffer.as_str(), Point::new(10, 50 + 15*i));
-                        textbuffer.truncate(0);
-                    },
-                }
-
-            },
-        }
-
-        if i>10 {
-            clear(&mut display);
-            i=0;
-        }
-    }
+    // show wifi info
+    delay.delay_ms(5000u32);
+    clear(&mut display);
 
     //Initialize i2c
     let user_i2c = sets.i2c.init(
@@ -182,7 +146,7 @@ fn main() -> ! {
     //Initialize SHT sensor
     let device_address = 0x44u8;
     let mut sht3 = SHT3X::new(user_i2c, device_address);
-    
+
     //Initialize one wire
     let mut one = sets.header_pins.a0_d0.into_readable_open_drain_output(&mut sets.port);
     let mut wire = OneWire::new(&mut one, false);
@@ -192,11 +156,12 @@ fn main() -> ! {
     let device = wire.search_next(&mut search, &mut delay).unwrap().unwrap();
     let ds_wrapper = Ds18b20Wrapper::new(device);
 
-    //main loop
-    loop {
-        //wait 1[s]
-        delay.delay_ms(1000u32);
+    //post request
+    let ip = secrets::ambient::IP;
+    let port = secrets::ambient::PORT;
 
+    //main loop
+    loop{
         // measure data from sht3
         sht3.measure();
         let sauna_temp  = sht3.get_temp();
@@ -205,15 +170,46 @@ fn main() -> ! {
         // measure data from ds18b
         let water_temp = ds_wrapper.measurement(&mut wire, &mut delay);
 
-        // show sensor data
-        clear(&mut display);
-        writeln!(textbuffer, "wio sanua monitor!!!\n temp: {0:.1} C\n humid: {1:.1} %\n water: {2:.1} C", 
-            sauna_temp, sauna_humid, water_temp).unwrap();
-        print_text(&mut display, &mut textbuffer, Point::new(30,30));
+        // create http message
+        let mut msg = String::<U256>::new();
+        let d1 = water_temp;
+        let d2 = sauna_temp;
+        let d3 = sauna_humid;
+        create_request_for_ambient(secrets::ambient::CHANNEL_ID, secrets::ambient::WRITE_KEY, [d1, d2, d3], &mut msg);
+        let res = http_post(ip, port, msg.as_str() , &mut textbuffer, &mut display, &mut delay);
+        
+        // create disp
+        let mut bodybuffer = String::<U256>::new();
+            writeln!(bodybuffer , "Hello wio-sauna-monitor\n\n ip = {}\n firmware = {}\n mac = {}\n",
+            ip_info.ip,
+            version,
+            mac,
+        ).unwrap();
+        writeln!(bodybuffer, " sauna temp : {0:.1} C\n sauna humid: {1:.1} %\n water bath : {2:.1} C", sauna_temp, sauna_humid, water_temp).unwrap();
+        print_text(&mut display, &mut bodybuffer, Point::new(10,10));
+        match res{
+            Ok(num) => {
+                writeln!(bodybuffer, "http Ok {}", num).unwrap();
+            },
+            Err(e) => {
+                match e {                        
+                    Err::ConnectFailed => {
+                        writeln!(bodybuffer, "http NG Connection failed").unwrap();
+                    },
+                    Err::RecvFailed =>{
+                        writeln!(bodybuffer, "http NG Recv failed").unwrap();
+                    }
+                    _ => {
+                        writeln!(bodybuffer, "http NG failed").unwrap();
+                    },
+                }
+            },
+        }
+        print_text(&mut display, &mut bodybuffer, Point::new(10,150));
 
-        // show IP address
-        writeln!(textbuffer, "ip = {}", ip_info.ip).unwrap();
-        print_text(&mut display, &mut textbuffer, Point::new(30,50));
+        //delay and clear disp
+        delay.delay_ms(5000u32);
+        clear(&mut display);
     }
 }
 
@@ -241,7 +237,7 @@ fn create_request_for_ambient(channel_id : u32, write_key : &str, data : [f32;3]
     let mut bodybuffer = String::<U256>::new();
 
     // create JSON body
-    writeln!(bodybuffer, "{{\"writeKey\":\"{}\",\"d1\":\"{}\",\"d2\":\"{}\",\"d3\":\"{}\"}}",
+    writeln!(bodybuffer, "{{\"writeKey\":\"{}\",\"d1\":\"{:.1}\",\"d2\":\"{:.1}\",\"d3\":\"{:.1}\"}}",
                            write_key, data[0], data[1], data[2],
     ).unwrap();
 
@@ -343,7 +339,7 @@ fn http_post(
     if body_length < 0 {
         clear(display);
         writeln!(textbuffer, "http recv error , {} ", text.len()).unwrap();
-        write(display, textbuffer.as_str(), Point::new(10, 50));
+        write(display, textbuffer.as_str(), Point::new(10, 220));
         textbuffer.truncate(0);
         return Err(Err::RecvFailed);
     }
