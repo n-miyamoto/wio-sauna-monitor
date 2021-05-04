@@ -136,9 +136,54 @@ fn main() -> ! {
     //post request
     let ip = secrets::ambient::IP;
     let port = secrets::ambient::PORT;
-    let res = http_post(ip, port, msg.as_str() , &mut textbuffer, &mut display).unwrap();
+    //let res = http_post(ip, port, msg.as_str() , &mut textbuffer, &mut display).unwrap();
+    let res = http_post(ip, port, msg.as_str() , &mut textbuffer, &mut display, &mut delay).unwrap();
 
-    clear(&mut display);
+    //clear(&mut display);
+    writeln!(textbuffer, "http Ok, {} ", res).unwrap();
+    write(&mut display, textbuffer.as_str(), Point::new(10, 50));
+    textbuffer.truncate(0);
+
+    let mut i = 0;
+    loop{
+        i+=1;
+        delay.delay_ms(5000u32);
+        let res = http_post(ip, port, msg.as_str() , &mut textbuffer, &mut display, &mut delay);
+        match res{
+            Ok(num) => {
+                writeln!(textbuffer, "http Ok, {} ", num).unwrap();
+                write(&mut display, textbuffer.as_str(), Point::new(10, 50 + 15*i));
+                textbuffer.truncate(0);
+            },
+            Err(e) => {
+                match e {                        
+                    Err::ConnectFailed => {
+                        writeln!(textbuffer, "http NG Connection failed").unwrap();
+                        write(&mut display, textbuffer.as_str(), Point::new(10, 50 + 15*i));
+                        textbuffer.truncate(0);
+                    },
+                    Err::RecvFailed =>{
+                        writeln!(textbuffer, "http NG Recv failed").unwrap();
+                        write(&mut display, textbuffer.as_str(), Point::new(10, 50 + 15*i));
+                        textbuffer.truncate(0);
+                    }
+                    _ => {
+                        writeln!(textbuffer, "http NG failed").unwrap();
+                        write(&mut display, textbuffer.as_str(), Point::new(10, 50 + 15*i));
+                        textbuffer.truncate(0);
+                    },
+                }
+
+            },
+        }
+
+        if i>10 {
+            clear(&mut display);
+            i=0;
+        }
+    }
+
+    //clear(&mut display);
     writeln!(textbuffer, "http Ok, {} ", res).unwrap();
     write(&mut display, textbuffer.as_str(), Point::new(10, 50));
     textbuffer.truncate(0);
@@ -236,7 +281,14 @@ pub enum Err{
     Unknown,
 }
 
-fn http_post(ip: u32, port: u16, msg: &str, textbuffer: &mut String::<U256>, display: &mut wio::LCD) -> Result<u32,Err>{
+fn http_post(
+    ip: u32, 
+    port: u16, 
+    msg: &str, 
+    textbuffer: &mut String::<U256>, 
+    display: &mut wio::LCD,
+    delay: &mut Delay,)
+    -> Result<u32,Err>{
 
     let timeout = 4000*1000; //4s
 
@@ -260,15 +312,17 @@ fn http_post(ip: u32, port: u16, msg: &str, textbuffer: &mut String::<U256>, dis
                 wifi.send(&msg[chunk_size*i .. core::cmp::min(chunk_size*(i+1), msg.len())])
             }).unwrap()
         };
+        delay.delay_ms(30u32);
         match ret{
             Err(_) => return Err(Err::SendFailed),
             _ => (),
         }
     }
 
+
     // recv message
     let mut text= String::<U4096>::new();
-    let mut countdown = 100;
+    let mut countdown = 10;
     let mut body_length = -1;
     let recv_chunk_size = 512;
 
@@ -278,6 +332,7 @@ fn http_post(ip: u32, port: u16, msg: &str, textbuffer: &mut String::<U256>, dis
                 wifi.recv()
             }).unwrap()
         };
+        delay.delay_ms(30u32);
         match ret {
             Ok(txt) => {
                 let t= String::from_utf8(txt).unwrap();
@@ -303,6 +358,10 @@ fn http_post(ip: u32, port: u16, msg: &str, textbuffer: &mut String::<U256>, dis
     }
 
     if body_length < 0 {
+        clear(display);
+        writeln!(textbuffer, "http recv error , {} ", text.len()).unwrap();
+        write(display, textbuffer.as_str(), Point::new(10, 50));
+        textbuffer.truncate(0);
         return Err(Err::RecvFailed);
     }
 
