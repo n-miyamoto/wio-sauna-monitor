@@ -121,33 +121,21 @@ fn main() -> ! {
     ).unwrap();
     print_text(&mut display, &mut textbuffer, Point::new(10,15));
 
-    //create http post request
-    delay.delay_ms(1000u32);
-    let mut msg = String::<U256>::new();
-    let d1 = 16.0;
-    let d2 = 81.2;
-    let d3 = 53.4;
-    create_request_for_ambient(secrets::ambient::CHANNEL_ID, secrets::ambient::WRITE_KEY, [d1, d2, d3], &mut msg);
-
-    writeln!(textbuffer, "Ok, msg length: {} ", msg.len()).unwrap();
-    write(&mut display, textbuffer.as_str(), Point::new(10, 30));
-    textbuffer.truncate(0);
 
     //post request
     let ip = secrets::ambient::IP;
     let port = secrets::ambient::PORT;
-    //let res = http_post(ip, port, msg.as_str() , &mut textbuffer, &mut display).unwrap();
-    let res = http_post(ip, port, msg.as_str() , &mut textbuffer, &mut display, &mut delay).unwrap();
-
-    //clear(&mut display);
-    writeln!(textbuffer, "http Ok, {} ", res).unwrap();
-    write(&mut display, textbuffer.as_str(), Point::new(10, 50));
-    textbuffer.truncate(0);
 
     let mut i = 0;
     loop{
         i+=1;
         delay.delay_ms(5000u32);
+
+        let mut msg = String::<U256>::new();
+        let d1 = 16.0;
+        let d2 = 81.2;
+        let d3 = 53.4;
+        create_request_for_ambient(secrets::ambient::CHANNEL_ID, secrets::ambient::WRITE_KEY, [d1, d2, d3], &mut msg);
         let res = http_post(ip, port, msg.as_str() , &mut textbuffer, &mut display, &mut delay);
         match res{
             Ok(num) => {
@@ -182,11 +170,6 @@ fn main() -> ! {
             i=0;
         }
     }
-
-    //clear(&mut display);
-    writeln!(textbuffer, "http Ok, {} ", res).unwrap();
-    write(&mut display, textbuffer.as_str(), Point::new(10, 50));
-    textbuffer.truncate(0);
 
     //Initialize i2c
     let user_i2c = sets.i2c.init(
