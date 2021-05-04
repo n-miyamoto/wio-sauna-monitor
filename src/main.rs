@@ -175,7 +175,11 @@ fn main() -> ! {
         let d1 = water_temp;
         let d2 = sauna_temp;
         let d3 = sauna_humid;
-        create_request_for_ambient(secrets::ambient::CHANNEL_ID, secrets::ambient::WRITE_KEY, [d1, d2, d3], &mut msg);
+        create_request_for_ambient(
+            secrets::ambient::CHANNEL_ID, 
+            secrets::ambient::WRITE_KEY, 
+            [d1, d2, d3], 
+            &mut msg);
         let res = http_post(ip, port, msg.as_str() , &mut textbuffer, &mut display, &mut delay);
         
         // create disp
@@ -209,6 +213,7 @@ fn main() -> ! {
 
         //delay and clear disp
         delay.delay_ms(5000u32);
+        delay.delay_ms(secrets::params::INTERVAL_MS);
         clear(&mut display);
     }
 }
