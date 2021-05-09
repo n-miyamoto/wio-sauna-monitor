@@ -1,4 +1,4 @@
-# wio-sauna-terminal
+# wio-sauna-monitor
 
 ## settings
 - Modify `secrets.rs` to your own parameters
