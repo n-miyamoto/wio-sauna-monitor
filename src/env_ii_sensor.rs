@@ -21,6 +21,12 @@ impl SHT3X{
         }
     }
     pub fn measure(&mut self){
+        if cfg!(feature = "without_sensors") {
+            self.c_temp = 81.2; //dummy data
+            self.humid  = 52.3; //dummy data
+            return;
+        };
+
         let wdata: [u8; 2] = [0x2C, 0x06];
         let _ret = self.i2c.write(self.address, &wdata);
 

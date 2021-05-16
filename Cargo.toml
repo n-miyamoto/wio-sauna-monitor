@@ -13,3 +13,6 @@ cortex-m-rt = "~0.6"
 heapless = "~0.5"
 embedded-graphics = "~0.6"
 onewire = "0.3.13"
+
+[features]
+without_sensors = [] # feature has no explicit dependencies

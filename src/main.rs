@@ -131,8 +131,14 @@ fn main() -> ! {
     ).unwrap();
     print_text(&mut display, &mut textbuffer, Point::new(10,15));
 
+    // debug without sensors
+    if cfg!(feature = "without_sensors") {
+        writeln!(textbuffer, "Debug without sensors!!!").unwrap();
+        print_text(&mut display, &mut textbuffer, Point::new(10,30));
+    }
+
     // show wifi info
-    delay.delay_ms(5000u32);
+    delay.delay_ms(3000u32);
     clear(&mut display);
 
     //Initialize i2c
@@ -152,9 +158,16 @@ fn main() -> ! {
     let mut wire = OneWire::new(&mut one, false);
     let mut search = DeviceSearch::new();
 
-    //  find & init ds18b sensor
-    let device = wire.search_next(&mut search, &mut delay).unwrap().unwrap();
-    let ds_wrapper = Ds18b20Wrapper::new(device);
+    // find & init ds18b sensor
+
+    let mut ds_wrapper : Option<Ds18b20Wrapper> =None;
+    // debug without sensors
+    if cfg!(feature = "without_sensors") {
+
+    }else{
+        let device = wire.search_next(&mut search, &mut delay).unwrap().unwrap();
+        ds_wrapper = Some(Ds18b20Wrapper::new(device));
+    }
 
     //post request
     let ip = secrets::ambient::IP;
@@ -168,7 +181,14 @@ fn main() -> ! {
         let sauna_humid = sht3.get_humid();
 
         // measure data from ds18b
-        let water_temp = ds_wrapper.measurement(&mut wire, &mut delay);
+        let water_temp = match ds_wrapper{
+            Some(ref ds) => {
+                ds.measurement(&mut wire, &mut delay)
+            },
+            None => {
+                19.8f32 //dummy data
+            },
+        };
 
         // create http message
         let mut msg = String::<U256>::new();
