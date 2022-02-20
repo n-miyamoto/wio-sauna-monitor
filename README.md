@@ -1,5 +1,11 @@
 # wio-sauna-monitor
 
+## rustc version
+```sh
+-> % rustc --version
+rustc 1.61.0-nightly (3b348d932 2022-02-19)
+```
+
 ## settings
 - Modify `secrets.rs` to your own parameters
 - Modify `$device_dir` of `build.sh` to your own parameters
