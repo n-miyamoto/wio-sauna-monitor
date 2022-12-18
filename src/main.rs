@@ -229,7 +229,7 @@ fn main() -> ! {
                 }
             },
         }
-        print_text(&mut display, &mut bodybuffer, Point::new(10,150));
+        print_text(&mut display, &mut bodybuffer, Point::new(10,130));
 
         //delay and clear disp
         delay.delay_ms(5000u32);
@@ -267,10 +267,11 @@ fn create_request_for_ambient(channel_id : u32, write_key : &str, data : [f32;3]
     ).unwrap();
 
     // create header
-    writeln!(msg, "POST /api/v2/channels/{}/data HTTP/1.1\r\n\
+    writeln!(msg, "POST {}/{}/data HTTP/1.1\r\n\
                   Host: 54.65.206.59\r\n\
                   Content-Type: application/json\r\n\
                   Content-Length: {}\r\n\r\n{}",
+                  secrets::ambient::BASE_URI, 
                   channel_id,
                   bodybuffer.len(),
                   bodybuffer,
@@ -363,8 +364,8 @@ fn http_post(
 
     if body_length < 0 {
         clear(display);
-        writeln!(textbuffer, "http recv error , {} ", text.len()).unwrap();
-        write(display, textbuffer.as_str(), Point::new(10, 220));
+        writeln!(textbuffer, "http recv error, {}, {}, \n {}", text.len(), countdown, text).unwrap();
+        write(display, textbuffer.as_str(), Point::new(10, 150));
         textbuffer.truncate(0);
         return Err(Err::RecvFailed);
     }
